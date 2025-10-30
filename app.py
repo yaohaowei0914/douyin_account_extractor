@@ -99,8 +99,31 @@ def extract_simple_fields(obj, prefix=""):
             simple_fields[field_name] = value
         elif isinstance(value, dict) and not value:  # Empty dict
             simple_fields[field_name] = ""
-        elif isinstance(value, list) and not value:  # Empty list
-            simple_fields[field_name] = ""
+        elif isinstance(value, list):
+            # Special handling: join non-empty list for specific keys like search_world
+            if key == "search_world":
+                try:
+                    # Convert each element to string sensibly
+                    def to_str(item):
+                        if isinstance(item, (str, int, float, bool)) or item is None:
+                            return "" if item is None else str(item)
+                        if isinstance(item, dict):
+                            # Try common fields, fallback to compact JSON
+                            for k in ("word", "name", "title"):
+                                if k in item and isinstance(item[k], (str, int, float)):
+                                    return str(item[k])
+                            return json.dumps(item, ensure_ascii=False)
+                        return str(item)
+
+                    joined = "、".join([to_str(x) for x in value]) if value else ""
+                    simple_fields[field_name] = joined
+                except Exception:
+                    # Fallback: empty string on error
+                    simple_fields[field_name] = ""
+            else:
+                # Keep behavior: only include empty list as empty string; skip non-empty lists
+                if not value:
+                    simple_fields[field_name] = ""
     
     return simple_fields
 
