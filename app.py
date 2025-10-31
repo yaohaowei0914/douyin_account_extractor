@@ -408,9 +408,51 @@ def main():
     process_directory(args.har, args.output)
 
 
-# =========================
-# Streamlit 界面（中文）
-# =========================
+# 指定列提取映射（与 extract_douyin_selected_columns.py 保持一致）
+SELECTED_HEADERS: List[Tuple[str, str]] = [
+    ("author_author_id", "ID"),
+    ("author_aweme_count", "视频个数"),
+    ("author_comment_avg", "平均评论"),
+    ("author_digg_avg", "平均点赞"),
+    ("author_follower_count", "粉丝个数"),
+    ("author_nickname", "name"),
+    ("author_share_avg", "平均分享"),
+    ("author_unique_id", "抖音号"),
+    ("aweme_aweme_cover", "视频封面"),
+    ("aweme_aweme_create_time", "创建时间"),
+    ("aweme_aweme_title", "标题"),
+    ("aweme_aweme_url", "url"),
+    ("aweme_collect_count", "收藏"),
+    ("aweme_comment_count", "评论"),
+    ("aweme_digg_count", "点赞"),
+    ("aweme_share_count", "分享"),
+    ("aweme_play_count_v2", "预估播放"),
+    ("aweme_sentence", "相关关键检索"),
+    ("aweme_search_world", "搜索关键词"),
+]
+
+def extract_selected_columns(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """按指定列映射提取并重命名列"""
+    selected: List[Dict[str, Any]] = []
+    for row in rows:
+        new_row = {}
+        for src_key, dst_name in SELECTED_HEADERS:
+            new_row[dst_name] = row.get(src_key, "")
+        selected.append(new_row)
+    return selected
+
+def download_selected_csv(rows: List[Dict[str, Any]], filename: str) -> bytes:
+    """将指定列结果转为 UTF-8-SIG CSV 字节流"""
+    selected = extract_selected_columns(rows)
+    if not selected:
+        return b""
+    buf = io.StringIO()
+    # 按 SELECTED_HEADERS 顺序写列
+    fieldnames = [dst for _, dst in SELECTED_HEADERS]
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
+    writer.writeheader()
+    writer.writerows(selected)
+    return buf.getvalue().encode("utf-8-sig")
 
 def streamlit_app():
     st.set_page_config(page_title="抖音 HAR 转 CSV", page_icon="🎵", layout="centered")
@@ -426,10 +468,11 @@ def streamlit_app():
         accept_multiple_files=True,
         help="Chrome/Edge：打开开发者工具 → Network → 右键空白处 → Save all as HAR with content。"
     )
+    st.subheader("📦 指定列导出")
 
-    run_btn = st.button("开始处理")
+    gen_btn = st.button("生成指定列 CSV")
 
-    if run_btn:
+    if gen_btn:
         if not uploaded:
             st.warning("请至少上传 1 个 `.har` 文件。")
             st.stop()
@@ -457,20 +500,19 @@ def streamlit_app():
             st.info("未在所上传的文件中找到可用的帖子数据。")
             st.stop()
 
-        # 导出 CSV
-        csv_bytes = to_csv_bytes(all_rows)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         out_name = f"douyin_posts_{ts}.csv"
 
-        st.success(f"完成！共从 **{len(uploaded)}** 个文件提取 **{len(all_rows)}** 条记录。")
-        st.download_button("⬇️ 下载合并后的 CSV", data=csv_bytes, file_name=out_name, mime="text/csv")
+        selected_csv_bytes = download_selected_csv(all_rows, out_name)
 
-        # 预览区
-        with st.expander("预览数据（前 N 行）"):
-            max_n = len(all_rows)
-            default_n = min(1000, max_n)
-            n = st.number_input("选择要预览的行数（从 1 开始）", min_value=1, max_value=max_n, value=default_n, step=100)
-            st.dataframe(all_rows[:n], use_container_width=True)
+        st.success(f"完成！共从 **{len(uploaded)}** 个文件提取 **{len(all_rows)}** 条记录，并生成指定列 CSV。")
+        st.download_button(
+            "⬇️ 下载指定列 CSV",
+            data=selected_csv_bytes,
+            file_name=out_name,
+            mime="text/csv"
+        )
+        st.caption("列顺序：ID、视频个数、平均评论、平均点赞、粉丝个数、name、平均分享、抖音号、视频封面、创建时间、标题、url、收藏、评论、点赞、分享、预估播放、相关关键检索、搜索关键词")
 
 
 if __name__ == '__main__':
